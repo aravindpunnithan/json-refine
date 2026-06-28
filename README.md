@@ -28,4 +28,4 @@ Vanilla JavaScript with two CDN libraries:
 
 ## License
 
-MIT
+This is free and unencumbered software released into the public domain under [The Unlicense](UNLICENSE).
