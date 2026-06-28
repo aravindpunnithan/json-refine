@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JSON / YAML Formatter &amp; Validator</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css" id="hljs-theme">
+
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+<style>
+  :root {
+    --bg: #1e1e1e;
+    --panel: #252526;
+    --toolbar: #2d2d2d;
+    --accent: #4fc3f7;
+    --error: #f44336;
+    --success: #66bb6a;
+    --text: #e6e6e6;
+    --text-dim: #9aa0a6;
+    --border: #3a3a3a;
+    --gutter: #2a2a2b;
+    --gutter-text: #6b6b6b;
+    --btn-bg: #3a3a3c;
+    --btn-hover: #4a4a4d;
+    --input-bg: #1b1b1b;
+  }
+  [data-theme="light"] {
+    --bg: #ffffff;
+    --panel: #f5f5f5;
+    --toolbar: #e8e8e8;
+    --accent: #0277bd;
+    --error: #d32f2f;
+    --success: #2e7d32;
+    --text: #1a1a1a;
+    --text-dim: #5f6368;
+    --border: #d0d0d0;
+    --gutter: #ececec;
+    --gutter-text: #9aa0a6;
+    --btn-bg: #dcdcdc;
+    --btn-hover: #cfcfcf;
+    --input-bg: #ffffff;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+    display: flex;
+    flex-direction: column;
+    transition: background 150ms ease, color 150ms ease;
+  }
+
+  /* ---------- Toolbar ---------- */
+  .toolbar {
+    background: var(--toolbar);
+    border-bottom: 1px solid var(--border);
+    padding: 8px 12px;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    transition: background 150ms ease;
+  }
+  .toolbar .group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .toolbar .spacer { flex: 1 1 auto; }
+
+  button.action, .pill {
+    font-family: inherit;
+    font-size: 12.5px;
+    color: var(--text);
+    background: var(--btn-bg);
+    border: 1px solid var(--border);
+    padding: 6px 14px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background 150ms ease, transform 80ms ease, color 150ms ease;
+    white-space: nowrap;
+  }
+  button.action:hover, .pill:hover { background: var(--btn-hover); }
+  button.action:active { transform: translateY(1px); }
+  button.action.primary { border-color: var(--accent); color: var(--accent); }
+
+  .options {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-wrap: wrap;
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+  .options label { display: flex; align-items: center; gap: 5px; cursor: pointer; user-select: none; }
+  .options select {
+    font-family: inherit;
+    font-size: 12px;
+    background: var(--btn-bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 6px;
+    cursor: pointer;
+  }
+  .options input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
+
+  .title {
+    font-weight: 700;
+    font-size: 13px;
+    color: var(--accent);
+    margin-right: 6px;
+    white-space: nowrap;
+  }
+
+  /* ---------- Panels ---------- */
+  .panels {
+    flex: 1 1 auto;
+    display: flex;
+    min-height: 0;
+  }
+  .panel {
+    flex: 1 1 50%;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    background: var(--panel);
+    transition: background 150ms ease;
+  }
+  .panel.input { border-right: 1px solid var(--border); }
+
+  .panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 10px;
+    font-size: 11px;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .editor-wrap {
+    flex: 1 1 auto;
+    display: flex;
+    min-height: 0;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* shared gutter */
+  .gutter {
+    background: var(--gutter);
+    color: var(--gutter-text);
+    text-align: right;
+    padding: 10px 8px 10px 0;
+    font-size: 13px;
+    line-height: 1.5;
+    user-select: none;
+    overflow: hidden;
+    white-space: pre;
+    min-width: 44px;
+    border-right: 1px solid var(--border);
+  }
+
+  textarea#input {
+    flex: 1 1 auto;
+    resize: none;
+    border: none;
+    outline: none;
+    background: var(--input-bg);
+    color: var(--text);
+    font-family: inherit;
+    font-size: 13px;
+    line-height: 1.5;
+    padding: 10px 12px;
+    tab-size: 2;
+    overflow: auto;
+    transition: background 150ms ease, color 150ms ease, box-shadow 150ms ease;
+  }
+  textarea#input.invalid { box-shadow: inset 0 0 0 2px var(--error); }
+
+  .output-scroll {
+    flex: 1 1 auto;
+    overflow: auto;
+    background: var(--input-bg);
+    transition: background 150ms ease;
+  }
+  pre#output-pre {
+    margin: 0;
+    padding: 10px 12px;
+  }
+  code#output {
+    font-family: inherit !important;
+    font-size: 13px;
+    line-height: 1.5;
+    background: transparent !important;
+    padding: 0 !important;
+    white-space: pre;
+  }
+  .output-scroll.error-mode { display: flex; align-items: flex-start; }
+  #output.error-text {
+    color: var(--error);
+    white-space: pre-wrap;
+    display: block;
+  }
+
+  /* ---------- Status bars ---------- */
+  .statusbar {
+    border-top: 1px solid var(--border);
+    padding: 6px 10px;
+    font-size: 11.5px;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-height: 30px;
+  }
+  .statusbar .msg { flex: 1 1 auto; }
+  .statusbar .msg.ok { color: var(--success); }
+  .statusbar .msg.err { color: var(--error); }
+  .statusbar .counts { color: var(--text-dim); white-space: nowrap; }
+
+  .copy-btn {
+    font-family: inherit;
+    font-size: 11px;
+    color: var(--text);
+    background: var(--btn-bg);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 3px 12px;
+    cursor: pointer;
+    transition: background 150ms ease, color 150ms ease;
+  }
+  .copy-btn:hover { background: var(--btn-hover); }
+  .copy-btn.copied { color: var(--success); border-color: var(--success); }
+
+  /* ---------- Mobile ---------- */
+  @media (max-width: 760px) {
+    .panels { flex-direction: column; }
+    .panel.input { border-right: none; border-bottom: 1px solid var(--border); }
+    .panel { flex: 1 1 50%; }
+  }
+</style>
+</head>
+<body data-theme="dark">
+
+  <div class="toolbar">
+    <span class="title">JSON / YAML</span>
+    <div class="group">
+      <button class="action primary" data-act="formatJson">Format JSON</button>
+      <button class="action primary" data-act="formatYaml">Format YAML</button>
+      <button class="action" data-act="jsonToYaml">JSON &rarr; YAML</button>
+      <button class="action" data-act="yamlToJson">YAML &rarr; JSON</button>
+      <button class="action" data-act="validate">Validate</button>
+      <button class="action" data-act="minify">Minify</button>
+      <button class="action" data-act="clear">Clear</button>
+    </div>
+    <div class="spacer"></div>
+    <div class="options">
+      <label>Indent
+        <select id="indent">
+          <option value="2">2 spaces</option>
+          <option value="4">4 spaces</option>
+          <option value="tab">tab</option>
+        </select>
+      </label>
+      <label><input type="checkbox" id="sortKeys"> Sort keys</label>
+      <label><input type="checkbox" id="autoDetect"> Auto-detect on paste</label>
+      <button class="pill" id="themeToggle">&#9788; Light</button>
+    </div>
+  </div>
+
+  <div class="panels">
+    <!-- INPUT -->
+    <section class="panel input">
+      <div class="panel-head"><span>Input</span></div>
+      <div class="editor-wrap">
+        <div class="gutter" id="inputGutter">1</div>
+        <textarea id="input" spellcheck="false" placeholder="Paste JSON or YAML here..."></textarea>
+      </div>
+      <div class="statusbar">
+        <span class="msg" id="inputMsg">Ready</span>
+        <span class="counts" id="inputCounts">0 chars &middot; 1 line</span>
+      </div>
+    </section>
+
+    <!-- OUTPUT -->
+    <section class="panel output">
+      <div class="panel-head">
+        <span id="outputLang">Output</span>
+        <button class="copy-btn" id="copyBtn">Copy</button>
+      </div>
+      <div class="editor-wrap">
+        <div class="gutter" id="outputGutter">1</div>
+        <div class="output-scroll" id="outputScroll">
+          <pre id="output-pre"><code id="output" class="hljs"></code></pre>
+        </div>
+      </div>
+      <div class="statusbar">
+        <span class="msg" id="outputMsg">No output yet</span>
+      </div>
+    </section>
+  </div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---- Elements ----
+  const $ = (id) => document.getElementById(id);
+  const inputEl = $("input");
+  const outputEl = $("output");
+  const outputPre = $("output-pre");
+  const outputScroll = $("outputScroll");
+  const inputGutter = $("inputGutter");
+  const outputGutter = $("outputGutter");
+  const inputMsg = $("inputMsg");
+  const outputMsg = $("outputMsg");
+  const inputCounts = $("inputCounts");
+  const outputLang = $("outputLang");
+  const copyBtn = $("copyBtn");
+  const indentSel = $("indent");
+  const sortKeysEl = $("sortKeys");
+  const autoDetectEl = $("autoDetect");
+  const themeToggle = $("themeToggle");
+
+  let currentOutputText = "";
+  let lastFailed = false;
+
+  // ---- Helpers ----
+  function getIndent() {
+    const v = indentSel.value;
+    if (v === "tab") return "\t";
+    return parseInt(v, 10);
+  }
+
+  // js-yaml dump indent must be a number; tab not supported -> fall back to 2 for YAML dumps
+  function yamlIndent() {
+    const v = indentSel.value;
+    if (v === "tab") return 2;
+    return parseInt(v, 10);
+  }
+
+  function sortReplacer(key, value) {
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      return Object.keys(value).sort().reduce((acc, k) => {
+        acc[k] = value[k];
+        return acc;
+      }, {});
+    }
+    return value;
+  }
+
+  function jsonStringify(obj) {
+    const indent = getIndent();
+    if (sortKeysEl.checked) {
+      return JSON.stringify(obj, sortReplacer, indent);
+    }
+    return JSON.stringify(obj, null, indent);
+  }
+
+  function yamlDump(obj) {
+    return jsyaml.dump(obj, {
+      indent: yamlIndent(),
+      sortKeys: sortKeysEl.checked,
+      lineWidth: -1,
+      noRefs: true
+    });
+  }
+
+  function countKeys(obj) {
+    let n = 0;
+    (function walk(o) {
+      if (o && typeof o === "object") {
+        if (Array.isArray(o)) {
+          o.forEach(walk);
+        } else {
+          for (const k in o) { n++; walk(o[k]); }
+        }
+      }
+    })(obj);
+    return n;
+  }
+
+  function maxDepth(obj) {
+    if (!obj || typeof obj !== "object") return 0;
+    let max = 0;
+    const vals = Array.isArray(obj) ? obj : Object.values(obj);
+    for (const v of vals) max = Math.max(max, maxDepth(v));
+    return 1 + max;
+  }
+
+  // Extract line/col from a JSON SyntaxError message + position
+  function jsonErrorLocation(err, text) {
+    const msg = err.message || String(err);
+    // Chrome/V8: "... at position 12 (line 3 column 5)"
+    let m = msg.match(/line (\d+) column (\d+)/i);
+    if (m) return { line: +m[1], col: +m[2], msg };
+    // Position-only -> compute line/col
+    m = msg.match(/position (\d+)/i);
+    if (m) {
+      const pos = +m[1];
+      const upto = text.slice(0, pos);
+      const line = upto.split("\n").length;
+      const col = pos - upto.lastIndexOf("\n");
+      return { line, col, msg };
+    }
+    return { line: null, col: null, msg };
+  }
+
+  // ---- Status / output rendering ----
+  function setInputStatus(text, kind) {
+    inputMsg.textContent = text;
+    inputMsg.className = "msg" + (kind ? " " + kind : "");
+    inputEl.classList.toggle("invalid", kind === "err");
+  }
+
+  function setOutputStatus(text, kind) {
+    outputMsg.textContent = text;
+    outputMsg.className = "msg" + (kind ? " " + kind : "");
+  }
+
+  function showOutput(text, lang) {
+    lastFailed = false;
+    currentOutputText = text;
+    outputScroll.classList.remove("error-mode");
+    outputEl.classList.remove("error-text");
+    outputEl.textContent = text;
+    outputEl.className = "hljs language-" + lang;
+    outputEl.removeAttribute("data-highlighted");
+    if (window.hljs) {
+      try { hljs.highlightElement(outputEl); } catch (e) { /* noop */ }
+    }
+    outputLang.textContent = "Output · " + lang.toUpperCase();
+    updateOutputGutter();
+  }
+
+  function showOutputError(text) {
+    lastFailed = true;
+    currentOutputText = "";
+    outputScroll.classList.add("error-mode");
+    outputEl.className = "error-text";
+    outputEl.textContent = text;
+    outputLang.textContent = "Output · ERROR";
+    updateOutputGutter();
+  }
+
+  // ---- Line numbers ----
+  function buildGutter(n) {
+    let s = "";
+    for (let i = 1; i <= n; i++) s += i + (i < n ? "\n" : "");
+    return s;
+  }
+  function updateInputGutter() {
+    const lines = inputEl.value.split("\n").length || 1;
+    inputGutter.textContent = buildGutter(lines);
+    inputGutter.scrollTop = inputEl.scrollTop;
+  }
+  function updateOutputGutter() {
+    const txt = outputEl.textContent || "";
+    const lines = txt.length ? txt.split("\n").length : 1;
+    outputGutter.textContent = buildGutter(lines);
+    outputGutter.scrollTop = outputScroll.scrollTop;
+  }
+  function updateCounts() {
+    const v = inputEl.value;
+    const chars = v.length;
+    const lines = v.split("\n").length;
+    inputCounts.textContent = chars + " char" + (chars === 1 ? "" : "s") +
+      " · " + lines + " line" + (lines === 1 ? "" : "s");
+  }
+
+  inputEl.addEventListener("scroll", () => { inputGutter.scrollTop = inputEl.scrollTop; });
+  outputScroll.addEventListener("scroll", () => { outputGutter.scrollTop = outputScroll.scrollTop; });
+
+  // ---- Parsing wrappers ----
+  function parseJson(text) {
+    try {
+      const obj = JSON.parse(text);
+      return { ok: true, value: obj };
+    } catch (err) {
+      const loc = jsonErrorLocation(err, text);
+      let label = "Invalid JSON: ";
+      if (loc.line != null) label += "Line " + loc.line + ", Col " + loc.col + ": ";
+      label += loc.msg;
+      return { ok: false, error: label };
+    }
+  }
+
+  function parseYaml(text) {
+    try {
+      const obj = jsyaml.load(text, { strict: true });
+      return { ok: true, value: obj };
+    } catch (err) {
+      let label = "Invalid YAML: ";
+      if (err && err.mark && typeof err.mark.line === "number") {
+        label += "Line " + (err.mark.line + 1) + ", Col " + (err.mark.column + 1) + ": ";
+      }
+      label += (err && err.reason) ? err.reason : (err.message || String(err));
+      return { ok: false, error: label };
+    }
+  }
+
+  // Try JSON first, then YAML. Returns {format, value} or {error}
+  function autoParse(text) {
+    const j = parseJson(text);
+    if (j.ok) return { format: "json", value: j.value };
+    const y = parseYaml(text);
+    if (y.ok) return { format: "yaml", value: y.value };
+    return { error: "Could not parse as JSON or YAML. " + j.error };
+  }
+
+  // ---- Actions ----
+  function requireInput() {
+    if (!inputEl.value.trim()) {
+      setInputStatus("Input is empty", "err");
+      setOutputStatus("Input is empty", "err");
+      showOutputError("Input is empty");
+      return false;
+    }
+    return true;
+  }
+
+  function finishMaybeIdentical(resultText) {
+    if (resultText === inputEl.value) {
+      setOutputStatus("Already formatted", "ok");
+    }
+  }
+
+  const actions = {
+    formatJson() {
+      if (!requireInput()) return;
+      const r = parseJson(inputEl.value);
+      if (!r.ok) {
+        setInputStatus(r.error, "err");
+        setOutputStatus(r.error, "err");
+        showOutputError(r.error);
+        return;
+      }
+      const out = jsonStringify(r.value);
+      showOutput(out, "json");
+      setInputStatus("✅ Valid JSON (" + countKeys(r.value) + " keys, depth " + maxDepth(r.value) + ")", "ok");
+      setOutputStatus("Formatted as JSON", "ok");
+      finishMaybeIdentical(out);
+    },
+
+    formatYaml() {
+      if (!requireInput()) return;
+      // Accept JSON or YAML input, output YAML
+      const r = parseYaml(inputEl.value);
+      let value, srcOk = r.ok;
+      if (r.ok) {
+        value = r.value;
+      } else {
+        const j = parseJson(inputEl.value);
+        if (!j.ok) {
+          setInputStatus(r.error, "err");
+          setOutputStatus(r.error, "err");
+          showOutputError(r.error);
+          return;
+        }
+        value = j.value;
+      }
+      const out = yamlDump(value);
+      showOutput(out, "yaml");
+      setInputStatus("✅ Valid YAML", "ok");
+      setOutputStatus("Formatted as YAML", "ok");
+      finishMaybeIdentical(out);
+    },
+
+    jsonToYaml() {
+      if (!requireInput()) return;
+      const r = parseJson(inputEl.value);
+      if (!r.ok) {
+        setInputStatus(r.error, "err");
+        setOutputStatus(r.error, "err");
+        showOutputError(r.error);
+        return;
+      }
+      const out = yamlDump(r.value);
+      showOutput(out, "yaml");
+      setInputStatus("✅ Valid JSON", "ok");
+      setOutputStatus("Converted JSON → YAML", "ok");
+    },
+
+    yamlToJson() {
+      if (!requireInput()) return;
+      const r = parseYaml(inputEl.value);
+      if (!r.ok) {
+        setInputStatus(r.error, "err");
+        setOutputStatus(r.error, "err");
+        showOutputError(r.error);
+        return;
+      }
+      const out = jsonStringify(r.value);
+      showOutput(out, "json");
+      setInputStatus("✅ Valid YAML", "ok");
+      setOutputStatus("Converted YAML → JSON", "ok");
+    },
+
+    validate() {
+      if (!requireInput()) return;
+      const j = parseJson(inputEl.value);
+      if (j.ok) {
+        const m = "✅ Valid JSON (" + countKeys(j.value) + " keys, depth " + maxDepth(j.value) + ")";
+        setInputStatus(m, "ok");
+        setOutputStatus(m, "ok");
+        showOutput(jsonStringify(j.value), "json");
+        return;
+      }
+      const y = parseYaml(inputEl.value);
+      if (y.ok) {
+        const m = "✅ Valid YAML";
+        setInputStatus(m, "ok");
+        setOutputStatus(m, "ok");
+        showOutput(yamlDump(y.value), "yaml");
+        return;
+      }
+      // Neither: report both errors, prefer JSON message
+      setInputStatus("❌ " + j.error, "err");
+      setOutputStatus("❌ " + j.error, "err");
+      showOutputError("❌ " + j.error + "\n\n❌ " + y.error);
+    },
+
+    minify() {
+      if (!requireInput()) return;
+      const r = parseJson(inputEl.value);
+      if (!r.ok) {
+        const msg = "Minify is JSON-only. " + r.error;
+        setInputStatus(msg, "err");
+        setOutputStatus(msg, "err");
+        showOutputError(msg);
+        return;
+      }
+      const out = sortKeysEl.checked
+        ? JSON.stringify(r.value, sortReplacer)
+        : JSON.stringify(r.value);
+      showOutput(out, "json");
+      setInputStatus("✅ Valid JSON", "ok");
+      setOutputStatus("Minified", "ok");
+      finishMaybeIdentical(out);
+    },
+
+    clear() {
+      inputEl.value = "";
+      currentOutputText = "";
+      lastFailed = false;
+      outputScroll.classList.remove("error-mode");
+      outputEl.className = "hljs";
+      outputEl.textContent = "";
+      outputLang.textContent = "Output";
+      setInputStatus("Ready");
+      setOutputStatus("No output yet");
+      updateInputGutter();
+      updateOutputGutter();
+      updateCounts();
+      inputEl.focus();
+    }
+  };
+
+  document.querySelectorAll("button.action").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const act = btn.getAttribute("data-act");
+      if (actions[act]) actions[act]();
+    });
+  });
+
+  // ---- Input events ----
+  function onInputChanged() {
+    updateInputGutter();
+    updateCounts();
+  }
+  inputEl.addEventListener("input", onInputChanged);
+
+  // Auto-detect on paste
+  inputEl.addEventListener("paste", () => {
+    setTimeout(() => {
+      onInputChanged();
+      if (!autoDetectEl.checked) return;
+      if (!inputEl.value.trim()) return;
+      const parsed = autoParse(inputEl.value);
+      if (parsed.error) {
+        setInputStatus(parsed.error, "err");
+        setOutputStatus(parsed.error, "err");
+        showOutputError(parsed.error);
+        return;
+      }
+      if (parsed.format === "json") actions.formatJson();
+      else actions.formatYaml();
+    }, 0);
+  });
+
+  // Re-run live formatting on edit when auto-detect is on
+  let liveTimer = null;
+  inputEl.addEventListener("input", () => {
+    if (!autoDetectEl.checked) return;
+    clearTimeout(liveTimer);
+    liveTimer = setTimeout(() => {
+      if (!inputEl.value.trim()) return;
+      const parsed = autoParse(inputEl.value);
+      if (parsed.error) {
+        setInputStatus(parsed.error, "err");
+        return;
+      }
+      if (parsed.format === "json") actions.formatJson();
+      else actions.formatYaml();
+    }, 400);
+  });
+
+  // ---- Re-render output when options change ----
+  [indentSel, sortKeysEl].forEach((el) => {
+    el.addEventListener("change", () => {
+      if (currentOutputText && !lastFailed && inputEl.value.trim()) {
+        // Re-run the operation implied by current output language
+        const lang = (outputLang.textContent || "").toLowerCase();
+        if (lang.indexOf("yaml") !== -1) {
+          // could be format yaml or json->yaml; re-derive from input
+          const r = parseYaml(inputEl.value).ok ? parseYaml(inputEl.value) : parseJson(inputEl.value);
+          if (r.ok) showOutput(yamlDump(r.value), "yaml");
+        } else if (lang.indexOf("json") !== -1) {
+          const r = parseJson(inputEl.value).ok ? parseJson(inputEl.value) : parseYaml(inputEl.value);
+          if (r.ok) showOutput(jsonStringify(r.value), "json");
+        }
+      }
+    });
+  });
+
+  // ---- Copy ----
+  copyBtn.addEventListener("click", async () => {
+    const text = lastFailed ? (outputEl.textContent || "") : currentOutputText;
+    if (!text) return;
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (e) {
+      // fallback
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand("copy"); } catch (e2) {}
+      document.body.removeChild(ta);
+    }
+    copyBtn.textContent = "Copied!";
+    copyBtn.classList.add("copied");
+    setTimeout(() => {
+      copyBtn.textContent = "Copy";
+      copyBtn.classList.remove("copied");
+    }, 2000);
+  });
+
+  // ---- Theme toggle ----
+  const hljsTheme = $("hljs-theme");
+  function applyTheme(theme) {
+    document.body.setAttribute("data-theme", theme);
+    if (theme === "light") {
+      themeToggle.innerHTML = "&#9728; Dark";
+      hljsTheme.href = "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-light.min.css";
+    } else {
+      themeToggle.innerHTML = "&#9788; Light";
+      hljsTheme.href = "https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css";
+    }
+  }
+  themeToggle.addEventListener("click", () => {
+    const cur = document.body.getAttribute("data-theme");
+    applyTheme(cur === "light" ? "dark" : "light");
+  });
+
+  // ---- Init ----
+  updateInputGutter();
+  updateOutputGutter();
+  updateCounts();
+})();
+</script>
+</body>
+</html>
