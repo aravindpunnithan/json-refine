@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>JSON / YAML Formatter &amp; Validator</title>
+<title>JSON Refine — JSON / YAML Formatter &amp; Validator</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%231e1e1e'/><text x='16' y='23' font-family='monospace' font-size='20' font-weight='700' text-anchor='middle' fill='%234fc3f7'>%7B%7D</text></svg>">
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -115,13 +116,31 @@
   }
   .options input[type="checkbox"] { accent-color: var(--accent); cursor: pointer; }
 
-  .title {
-    font-weight: 700;
-    font-size: 13px;
-    color: var(--accent);
+  .logo {
+    display: flex;
+    align-items: center;
+    gap: 7px;
     margin-right: 6px;
     white-space: nowrap;
+    user-select: none;
   }
+  .logo-mark { display: block; flex: none; }
+  .logo-badge { fill: var(--accent); transition: fill 150ms ease; }
+  .logo-braces {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 15px;
+    font-weight: 700;
+    fill: #ffffff;
+  }
+  .logo-text {
+    font-weight: 700;
+    font-size: 14px;
+    letter-spacing: .01em;
+    color: var(--text);
+    transition: color 150ms ease;
+  }
+  .logo-text b { color: var(--accent); font-weight: 700; transition: color 150ms ease; }
+  @media (max-width: 760px) { .logo-text { display: none; } }
 
   /* ---------- Panels ---------- */
   .panels {
@@ -258,7 +277,13 @@
 <body data-theme="dark">
 
   <div class="toolbar">
-    <span class="title">JSON / YAML</span>
+    <span class="logo" aria-label="JSON Refine">
+      <svg class="logo-mark" width="26" height="26" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" role="img" aria-hidden="true">
+        <rect class="logo-badge" width="32" height="32" rx="7"/>
+        <text class="logo-braces" x="16" y="22" text-anchor="middle">{ }</text>
+      </svg>
+      <span class="logo-text">JSON&nbsp;<b>Refine</b></span>
+    </span>
     <div class="group">
       <button class="action primary" data-act="formatJson">Format JSON</button>
       <button class="action primary" data-act="formatYaml">Format YAML</button>
