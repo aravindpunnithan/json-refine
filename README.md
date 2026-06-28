@@ -2,7 +2,7 @@
 
 A fast, fully client-side developer tool for formatting, validating, and converting between **JSON** and **YAML**. No build step, no server — a single `index.html` that runs entirely in your browser and works offline once loaded.
 
-🔗 **Live demo:** https://&lt;your-username&gt;.github.io/json-refine/
+🔗 **Live demo:** https://aravindpunnithan.github.io/json-refine/
 
 ## Features
 
