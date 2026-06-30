@@ -31,6 +31,10 @@
     --btn-bg: #3a3a3c;
     --btn-hover: #4a4a4d;
     --input-bg: #1b1b1b;
+    --t-string: #98c379;
+    --t-number: #d19a66;
+    --t-boolean: #56b6c2;
+    --t-null: #c678dd;
   }
   [data-theme="light"] {
     --bg: #ffffff;
@@ -47,6 +51,10 @@
     --btn-bg: #dcdcdc;
     --btn-hover: #cfcfcf;
     --input-bg: #ffffff;
+    --t-string: #22863a;
+    --t-number: #b5690a;
+    --t-boolean: #0b7285;
+    --t-null: #8250df;
   }
 
   * { box-sizing: border-box; }
@@ -266,6 +274,84 @@
   .copy-btn:hover { background: var(--btn-hover); }
   .copy-btn.copied { color: var(--success); border-color: var(--success); }
 
+  /* ---------- Output controls (view toggle) ---------- */
+  .out-controls { display: flex; align-items: center; gap: 6px; }
+
+  .seg {
+    display: inline-flex;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    overflow: hidden;
+  }
+  .seg .vbtn {
+    font-family: inherit;
+    font-size: 11px;
+    color: var(--text-dim);
+    background: transparent;
+    border: none;
+    padding: 3px 11px;
+    cursor: pointer;
+    transition: background 150ms ease, color 150ms ease;
+  }
+  .seg .vbtn:hover { background: var(--btn-hover); }
+  .seg .vbtn.active { background: var(--accent); color: #fff; }
+
+  .tree-tools { display: none; gap: 6px; }
+  .panel.output.tree-mode .tree-tools { display: inline-flex; }
+  .tree-tools .mini {
+    font-family: inherit;
+    font-size: 11px;
+    color: var(--text);
+    background: var(--btn-bg);
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    padding: 3px 10px;
+    cursor: pointer;
+    transition: background 150ms ease;
+  }
+  .tree-tools .mini:hover { background: var(--btn-hover); }
+
+  /* ---------- Tree view ---------- */
+  #outputTree {
+    padding: 10px 12px;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  .tempty { color: var(--text-dim); font-style: italic; }
+  .tchildren {
+    margin-left: 14px;
+    padding-left: 8px;
+    border-left: 1px solid var(--border);
+  }
+  .tnode.collapsed > .tchildren { display: none; }
+  .trow {
+    display: flex;
+    align-items: baseline;
+    gap: 2px;
+    padding: 1px 4px 1px 0;
+    border-radius: 4px;
+    white-space: pre;
+  }
+  .trow.clickable { cursor: pointer; }
+  .trow.clickable:hover { background: rgba(127, 127, 127, 0.10); }
+  .tcaret {
+    flex: none;
+    width: 14px;
+    text-align: center;
+    font-size: 9px;
+    color: var(--text-dim);
+    user-select: none;
+  }
+  .tkey { color: var(--accent); }
+  .tpunc { color: var(--text-dim); }
+  .tsummary { color: var(--text-dim); }
+  .tnode.collapsed > .trow .tsummary::after { content: " …"; }
+  .tval { word-break: break-word; white-space: pre-wrap; }
+  .tval.t-string { color: var(--t-string); }
+  .tval.t-number { color: var(--t-number); }
+  .tval.t-boolean { color: var(--t-boolean); }
+  .tval.t-null { color: var(--t-null); font-style: italic; }
+
   /* ---------- Mobile ---------- */
   @media (max-width: 760px) {
     .panels { flex-direction: column; }
@@ -326,12 +412,23 @@
     <section class="panel output">
       <div class="panel-head">
         <span id="outputLang">Output</span>
-        <button class="copy-btn" id="copyBtn">Copy</button>
+        <div class="out-controls">
+          <span class="tree-tools">
+            <button class="mini" id="expandAllBtn" title="Expand all">Expand all</button>
+            <button class="mini" id="collapseAllBtn" title="Collapse all">Collapse all</button>
+          </span>
+          <span class="seg" role="tablist" aria-label="Output view">
+            <button class="vbtn active" id="rawViewBtn" role="tab" aria-selected="true">Raw</button>
+            <button class="vbtn" id="treeViewBtn" role="tab" aria-selected="false">Tree</button>
+          </span>
+          <button class="copy-btn" id="copyBtn">Copy</button>
+        </div>
       </div>
       <div class="editor-wrap">
         <div class="gutter" id="outputGutter">1</div>
         <div class="output-scroll" id="outputScroll">
           <pre id="output-pre"><code id="output" class="hljs"></code></pre>
+          <div id="outputTree" hidden></div>
         </div>
       </div>
       <div class="statusbar">
@@ -349,7 +446,13 @@
   const inputEl = $("input");
   const outputEl = $("output");
   const outputPre = $("output-pre");
+  const outputTree = $("outputTree");
   const outputScroll = $("outputScroll");
+  const outputPanel = document.querySelector(".panel.output");
+  const rawViewBtn = $("rawViewBtn");
+  const treeViewBtn = $("treeViewBtn");
+  const expandAllBtn = $("expandAllBtn");
+  const collapseAllBtn = $("collapseAllBtn");
   const inputGutter = $("inputGutter");
   const outputGutter = $("outputGutter");
   const inputMsg = $("inputMsg");
@@ -364,6 +467,9 @@
 
   let currentOutputText = "";
   let lastFailed = false;
+  let currentOutputValue = undefined;
+  let hasValue = false;
+  let viewMode = "raw"; // "raw" | "tree"
 
   // ---- Helpers ----
   function getIndent() {
@@ -470,18 +576,147 @@
       try { hljs.highlightElement(outputEl); } catch (e) { /* noop */ }
     }
     outputLang.textContent = "Output · " + lang.toUpperCase();
+    // Capture structured value for the tree view (output text is always valid)
+    try {
+      currentOutputValue = (lang === "json") ? JSON.parse(text) : jsyaml.load(text);
+      hasValue = true;
+    } catch (e) {
+      currentOutputValue = undefined;
+      hasValue = false;
+    }
+    if (viewMode === "tree") renderTreeView();
     updateOutputGutter();
   }
 
   function showOutputError(text) {
     lastFailed = true;
     currentOutputText = "";
+    currentOutputValue = undefined;
+    hasValue = false;
     outputScroll.classList.add("error-mode");
     outputEl.className = "error-text";
     outputEl.textContent = text;
     outputLang.textContent = "Output · ERROR";
+    if (viewMode === "tree") renderTreeView();
     updateOutputGutter();
   }
+
+  // ---- Tree view ----
+  function valType(v) {
+    if (v === null) return "null";
+    if (Array.isArray(v)) return "array";
+    return typeof v; // object | string | number | boolean
+  }
+
+  function childCount(v, t) {
+    return t === "array" ? v.length : Object.keys(v).length;
+  }
+
+  function renderNode(key, value) {
+    const t = valType(value);
+    const isContainer = (t === "object" || t === "array");
+    const count = isContainer ? childCount(value, t) : 0;
+
+    const node = document.createElement("div");
+    node.className = "tnode";
+
+    const row = document.createElement("div");
+    row.className = "trow";
+
+    const caret = document.createElement("span");
+    caret.className = "tcaret";
+    caret.textContent = (isContainer && count) ? "▾" : "";
+    row.appendChild(caret);
+
+    if (key !== null) {
+      const k = document.createElement("span");
+      k.className = "tkey";
+      k.textContent = key;
+      row.appendChild(k);
+      const colon = document.createElement("span");
+      colon.className = "tpunc";
+      colon.textContent = ": ";
+      row.appendChild(colon);
+    }
+
+    if (isContainer) {
+      const summary = document.createElement("span");
+      summary.className = "tsummary";
+      summary.textContent = (t === "array")
+        ? "Array [" + count + "]"
+        : "Object {" + count + "}";
+      row.appendChild(summary);
+    } else {
+      const val = document.createElement("span");
+      val.className = "tval t-" + t;
+      val.textContent = (t === "string") ? JSON.stringify(value) : String(value);
+      row.appendChild(val);
+    }
+
+    node.appendChild(row);
+
+    if (isContainer && count) {
+      const kids = document.createElement("div");
+      kids.className = "tchildren";
+      const entries = (t === "array")
+        ? value.map((v, i) => ["[" + i + "]", v])
+        : Object.keys(value).map((k) => [k, value[k]]);
+      for (const [ck, cv] of entries) {
+        kids.appendChild(renderNode(ck, cv));
+      }
+      node.appendChild(kids);
+
+      row.classList.add("clickable");
+      row.addEventListener("click", () => {
+        const collapsed = node.classList.toggle("collapsed");
+        caret.textContent = collapsed ? "▸" : "▾";
+      });
+    }
+    return node;
+  }
+
+  function renderTreeView() {
+    outputTree.innerHTML = "";
+    if (lastFailed || !hasValue) {
+      const e = document.createElement("div");
+      e.className = "tempty";
+      e.textContent = lastFailed
+        ? "No structured output (last operation failed)."
+        : "No output yet.";
+      outputTree.appendChild(e);
+      return;
+    }
+    outputTree.appendChild(renderNode(null, currentOutputValue));
+  }
+
+  function setAllCollapsed(collapsed) {
+    outputTree.querySelectorAll(".tnode").forEach((node) => {
+      const kids = node.querySelector(":scope > .tchildren");
+      if (!kids) return;
+      node.classList.toggle("collapsed", collapsed);
+      const caret = node.querySelector(":scope > .trow > .tcaret");
+      if (caret) caret.textContent = collapsed ? "▸" : "▾";
+    });
+  }
+
+  function setView(mode) {
+    viewMode = mode;
+    const tree = (mode === "tree");
+    rawViewBtn.classList.toggle("active", !tree);
+    treeViewBtn.classList.toggle("active", tree);
+    rawViewBtn.setAttribute("aria-selected", String(!tree));
+    treeViewBtn.setAttribute("aria-selected", String(tree));
+    outputPanel.classList.toggle("tree-mode", tree);
+    outputPre.hidden = tree;
+    outputTree.hidden = !tree;
+    outputGutter.style.display = tree ? "none" : "";
+    if (tree) renderTreeView();
+  }
+
+  rawViewBtn.addEventListener("click", () => setView("raw"));
+  treeViewBtn.addEventListener("click", () => setView("tree"));
+  expandAllBtn.addEventListener("click", () => setAllCollapsed(false));
+  collapseAllBtn.addEventListener("click", () => setAllCollapsed(true));
 
   // ---- Line numbers ----
   function buildGutter(n) {
@@ -682,11 +917,14 @@
     clear() {
       inputEl.value = "";
       currentOutputText = "";
+      currentOutputValue = undefined;
+      hasValue = false;
       lastFailed = false;
       outputScroll.classList.remove("error-mode");
       outputEl.className = "hljs";
       outputEl.textContent = "";
       outputLang.textContent = "Output";
+      if (viewMode === "tree") renderTreeView();
       setInputStatus("Ready");
       setOutputStatus("No output yet");
       updateInputGutter();
