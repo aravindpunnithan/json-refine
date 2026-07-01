@@ -14,6 +14,7 @@
 
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"></script>
 <script defer src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/ajv/6.12.6/ajv.min.js"></script>
 
 <style>
   :root {
@@ -86,6 +87,54 @@
     flex-wrap: wrap;
   }
   .toolbar .spacer { flex: 1 1 auto; }
+
+  /* ---------- Mode tabs ---------- */
+  .tabs { display: inline-flex; gap: 4px; }
+  .tab {
+    font-family: inherit;
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--text-dim);
+    background: transparent;
+    border: 1px solid transparent;
+    padding: 6px 14px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background 150ms ease, color 150ms ease;
+  }
+  .tab:hover { background: var(--btn-hover); color: var(--text); }
+  .tab.active { background: var(--accent); color: #fff; }
+
+  /* ---------- Sub-toolbar (per-mode actions) ---------- */
+  .subbar {
+    background: var(--toolbar);
+    border-bottom: 1px solid var(--border);
+    padding: 7px 12px;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    transition: background 150ms ease;
+  }
+  .subbar[hidden] { display: none; }
+  .subbar .hint { font-size: 11.5px; color: var(--text-dim); margin-left: 4px; }
+
+  /* ---------- Views ---------- */
+  .views { flex: 1 1 auto; display: flex; min-height: 0; }
+  .view { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; width: 100%; }
+  .view[hidden] { display: none; }
+
+  .results {
+    flex: 0 0 auto;
+    max-height: 42%;
+    overflow: auto;
+    border-top: 2px solid var(--border);
+    background: var(--input-bg);
+    padding: 10px 12px;
+    font-size: 13px;
+    transition: background 150ms ease;
+  }
+  .results .placeholder { color: var(--text-dim); font-style: italic; }
 
   button.action, .pill {
     font-family: inherit;
@@ -201,7 +250,7 @@
     border-right: 1px solid var(--border);
   }
 
-  textarea#input {
+  .editor-wrap textarea {
     flex: 1 1 auto;
     resize: none;
     border: none;
@@ -216,7 +265,7 @@
     overflow: auto;
     transition: background 150ms ease, color 150ms ease, box-shadow 150ms ease;
   }
-  textarea#input.invalid { box-shadow: inset 0 0 0 2px var(--error); }
+  .editor-wrap textarea.invalid { box-shadow: inset 0 0 0 2px var(--error); }
 
   .output-scroll {
     flex: 1 1 auto;
@@ -352,6 +401,54 @@
   .tval.t-boolean { color: var(--t-boolean); }
   .tval.t-null { color: var(--t-null); font-style: italic; }
 
+  /* ---------- Diff & Schema results ---------- */
+  .res-head {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 8px; font-size: 12px; color: var(--text-dim);
+  }
+  .res-head .summary { font-weight: 700; }
+  .res-head .summary.ok { color: var(--success); }
+  .res-head .summary.diff { color: var(--accent); }
+  .res-head .summary.err { color: var(--error); }
+
+  /* structural diff list */
+  .dlist { display: flex; flex-direction: column; gap: 2px; }
+  .drow {
+    display: grid;
+    grid-template-columns: 20px minmax(120px, 1fr) 2fr;
+    gap: 8px; align-items: baseline;
+    padding: 3px 6px; border-radius: 4px; white-space: pre-wrap; word-break: break-word;
+  }
+  .drow .badge { text-align: center; font-weight: 700; }
+  .drow.added   { background: rgba(102,187,106,0.12); }
+  .drow.removed { background: rgba(244,67,54,0.12); }
+  .drow.changed { background: rgba(79,195,247,0.12); }
+  .drow.added .badge   { color: var(--success); }
+  .drow.removed .badge { color: var(--error); }
+  .drow.changed .badge { color: var(--accent); }
+  .drow .dpath { color: var(--accent); }
+  .drow .dval { color: var(--text); }
+  .drow .dval .old { color: var(--error); }
+  .drow .dval .arrow { color: var(--text-dim); margin: 0 6px; }
+  .drow .dval .new { color: var(--success); }
+
+  /* unified line diff */
+  .uline { display: flex; white-space: pre; font-size: 13px; line-height: 1.5; }
+  .uline .sign { flex: none; width: 18px; text-align: center; color: var(--text-dim); user-select: none; }
+  .uline.add { background: rgba(102,187,106,0.14); }
+  .uline.del { background: rgba(244,67,54,0.14); }
+  .uline.add .sign { color: var(--success); }
+  .uline.del .sign { color: var(--error); }
+
+  /* schema errors */
+  .slist { display: flex; flex-direction: column; gap: 4px; }
+  .serr {
+    display: grid; grid-template-columns: minmax(120px, 1fr) 2fr; gap: 10px;
+    padding: 4px 6px; border-radius: 4px; background: rgba(244,67,54,0.10);
+  }
+  .serr .spath { color: var(--accent); }
+  .serr .smsg { color: var(--text); }
+
   /* ---------- Mobile ---------- */
   @media (max-width: 760px) {
     .panels { flex-direction: column; }
@@ -370,14 +467,10 @@
       </svg>
       <span class="logo-text">JSON&nbsp;<b>Refine</b></span>
     </span>
-    <div class="group">
-      <button class="action primary" data-act="formatJson">Format JSON</button>
-      <button class="action primary" data-act="formatYaml">Format YAML</button>
-      <button class="action" data-act="jsonToYaml">JSON &rarr; YAML</button>
-      <button class="action" data-act="yamlToJson">YAML &rarr; JSON</button>
-      <button class="action" data-act="validate">Validate</button>
-      <button class="action" data-act="minify">Minify</button>
-      <button class="action" data-act="clear">Clear</button>
+    <div class="tabs" role="tablist" aria-label="Mode">
+      <button class="tab active" data-mode="format" role="tab" aria-selected="true">Format</button>
+      <button class="tab" data-mode="diff" role="tab" aria-selected="false">Diff</button>
+      <button class="tab" data-mode="schema" role="tab" aria-selected="false">Schema</button>
     </div>
     <div class="spacer"></div>
     <div class="options">
@@ -394,47 +487,121 @@
     </div>
   </div>
 
-  <div class="panels">
-    <!-- INPUT -->
-    <section class="panel input">
-      <div class="panel-head"><span>Input</span></div>
-      <div class="editor-wrap">
-        <div class="gutter" id="inputGutter">1</div>
-        <textarea id="input" spellcheck="false" placeholder="Paste JSON or YAML here..."></textarea>
-      </div>
-      <div class="statusbar">
-        <span class="msg" id="inputMsg">Ready</span>
-        <span class="counts" id="inputCounts">0 chars &middot; 1 line</span>
-      </div>
-    </section>
+  <!-- Per-mode action bars -->
+  <div class="subbar" id="formatActions">
+    <button class="action primary" data-act="formatJson">Format JSON</button>
+    <button class="action primary" data-act="formatYaml">Format YAML</button>
+    <button class="action" data-act="jsonToYaml">JSON &rarr; YAML</button>
+    <button class="action" data-act="yamlToJson">YAML &rarr; JSON</button>
+    <button class="action" data-act="validate">Validate</button>
+    <button class="action" data-act="minify">Minify</button>
+    <button class="action" data-act="clear">Clear</button>
+  </div>
 
-    <!-- OUTPUT -->
-    <section class="panel output">
-      <div class="panel-head">
-        <span id="outputLang">Output</span>
-        <div class="out-controls">
-          <span class="tree-tools">
-            <button class="mini" id="expandAllBtn" title="Expand all">Expand all</button>
-            <button class="mini" id="collapseAllBtn" title="Collapse all">Collapse all</button>
-          </span>
-          <span class="seg" role="tablist" aria-label="Output view">
-            <button class="vbtn active" id="rawViewBtn" role="tab" aria-selected="true">Raw</button>
-            <button class="vbtn" id="treeViewBtn" role="tab" aria-selected="false">Tree</button>
-          </span>
-          <button class="copy-btn" id="copyBtn">Copy</button>
-        </div>
+  <div class="subbar" id="diffActions" hidden>
+    <button class="action primary" id="compareBtn">Compare</button>
+    <span class="seg" role="tablist" aria-label="Diff view">
+      <button class="vbtn active" id="structDiffBtn" role="tab" aria-selected="true">Structural</button>
+      <button class="vbtn" id="lineDiffBtn" role="tab" aria-selected="false">Text-line</button>
+    </span>
+    <button class="action" id="swapBtn">Swap A &harr; B</button>
+    <button class="action" id="diffClearBtn">Clear</button>
+    <span class="hint">Compares A (left) against B (right). Each accepts JSON or YAML.</span>
+  </div>
+
+  <div class="subbar" id="schemaActions" hidden>
+    <button class="action primary" id="schemaValidateBtn">Validate against schema</button>
+    <button class="action" id="schemaSampleBtn">Load sample</button>
+    <button class="action" id="schemaClearBtn">Clear</button>
+    <span class="hint">Left: data (JSON/YAML). Right: JSON Schema (draft-07).</span>
+  </div>
+
+  <div class="views">
+    <!-- ========== FORMAT MODE ========== -->
+    <div class="view" id="formatView">
+      <div class="panels">
+        <section class="panel input">
+          <div class="panel-head"><span>Input</span></div>
+          <div class="editor-wrap">
+            <div class="gutter" id="inputGutter">1</div>
+            <textarea id="input" spellcheck="false" placeholder="Paste JSON or YAML here..."></textarea>
+          </div>
+          <div class="statusbar">
+            <span class="msg" id="inputMsg">Ready</span>
+            <span class="counts" id="inputCounts">0 chars &middot; 1 line</span>
+          </div>
+        </section>
+
+        <section class="panel output">
+          <div class="panel-head">
+            <span id="outputLang">Output</span>
+            <div class="out-controls">
+              <span class="tree-tools">
+                <button class="mini" id="expandAllBtn" title="Expand all">Expand all</button>
+                <button class="mini" id="collapseAllBtn" title="Collapse all">Collapse all</button>
+              </span>
+              <span class="seg" role="tablist" aria-label="Output view">
+                <button class="vbtn active" id="rawViewBtn" role="tab" aria-selected="true">Raw</button>
+                <button class="vbtn" id="treeViewBtn" role="tab" aria-selected="false">Tree</button>
+              </span>
+              <button class="copy-btn" id="copyBtn">Copy</button>
+            </div>
+          </div>
+          <div class="editor-wrap">
+            <div class="gutter" id="outputGutter">1</div>
+            <div class="output-scroll" id="outputScroll">
+              <pre id="output-pre"><code id="output" class="hljs"></code></pre>
+              <div id="outputTree" hidden></div>
+            </div>
+          </div>
+          <div class="statusbar">
+            <span class="msg" id="outputMsg">No output yet</span>
+          </div>
+        </section>
       </div>
-      <div class="editor-wrap">
-        <div class="gutter" id="outputGutter">1</div>
-        <div class="output-scroll" id="outputScroll">
-          <pre id="output-pre"><code id="output" class="hljs"></code></pre>
-          <div id="outputTree" hidden></div>
-        </div>
+    </div>
+
+    <!-- ========== DIFF MODE ========== -->
+    <div class="view" id="diffView" hidden>
+      <div class="panels">
+        <section class="panel input">
+          <div class="panel-head"><span>A (original)</span></div>
+          <div class="editor-wrap">
+            <textarea id="diffA" spellcheck="false" placeholder="Paste JSON or YAML (A)..."></textarea>
+          </div>
+        </section>
+        <section class="panel output">
+          <div class="panel-head"><span>B (changed)</span></div>
+          <div class="editor-wrap">
+            <textarea id="diffB" spellcheck="false" placeholder="Paste JSON or YAML (B)..."></textarea>
+          </div>
+        </section>
       </div>
-      <div class="statusbar">
-        <span class="msg" id="outputMsg">No output yet</span>
+      <div class="results" id="diffResults">
+        <div class="placeholder">Paste two payloads and click <strong>Compare</strong>.</div>
       </div>
-    </section>
+    </div>
+
+    <!-- ========== SCHEMA MODE ========== -->
+    <div class="view" id="schemaView" hidden>
+      <div class="panels">
+        <section class="panel input">
+          <div class="panel-head"><span>Data (JSON / YAML)</span></div>
+          <div class="editor-wrap">
+            <textarea id="schemaData" spellcheck="false" placeholder="Paste the data to validate..."></textarea>
+          </div>
+        </section>
+        <section class="panel output">
+          <div class="panel-head"><span>JSON Schema</span></div>
+          <div class="editor-wrap">
+            <textarea id="schemaDoc" spellcheck="false" placeholder="Paste a JSON Schema (draft-07)..."></textarea>
+          </div>
+        </section>
+      </div>
+      <div class="results" id="schemaResults">
+        <div class="placeholder">Paste data and a schema, then click <strong>Validate against schema</strong>.</div>
+      </div>
+    </div>
   </div>
 
 <script>
@@ -465,11 +632,40 @@
   const autoDetectEl = $("autoDetect");
   const themeToggle = $("themeToggle");
 
+  // Mode + subbars + views
+  const tabs = document.querySelectorAll(".tab");
+  const formatActions = $("formatActions");
+  const diffActions = $("diffActions");
+  const schemaActions = $("schemaActions");
+  const formatView = $("formatView");
+  const diffView = $("diffView");
+  const schemaView = $("schemaView");
+
+  // Diff refs
+  const diffA = $("diffA");
+  const diffB = $("diffB");
+  const diffResults = $("diffResults");
+  const compareBtn = $("compareBtn");
+  const structDiffBtn = $("structDiffBtn");
+  const lineDiffBtn = $("lineDiffBtn");
+  const swapBtn = $("swapBtn");
+  const diffClearBtn = $("diffClearBtn");
+
+  // Schema refs
+  const schemaData = $("schemaData");
+  const schemaDoc = $("schemaDoc");
+  const schemaResults = $("schemaResults");
+  const schemaValidateBtn = $("schemaValidateBtn");
+  const schemaSampleBtn = $("schemaSampleBtn");
+  const schemaClearBtn = $("schemaClearBtn");
+
   let currentOutputText = "";
   let lastFailed = false;
   let currentOutputValue = undefined;
   let hasValue = false;
   let viewMode = "raw"; // "raw" | "tree"
+  let mode = "format";  // "format" | "diff" | "schema"
+  let diffView2 = "structural"; // "structural" | "line"
 
   // ---- Helpers ----
   function getIndent() {
@@ -1022,6 +1218,272 @@
       copyBtn.textContent = "Copy";
       copyBtn.classList.remove("copied");
     }, 2000);
+  });
+
+  // ---- Small DOM helpers ----
+  function el(tag, cls) { const e = document.createElement(tag); if (cls) e.className = cls; return e; }
+  function placeholder(text) { const d = el("div", "placeholder"); d.textContent = text; return d; }
+  function makeResHead(text, kind) {
+    const h = el("div", "res-head");
+    const s = el("span", "summary" + (kind ? " " + kind : ""));
+    s.textContent = text;
+    h.appendChild(s);
+    return h;
+  }
+  function fmtVal(v) {
+    if (v === undefined) return "";
+    const t = valType(v);
+    if (t === "string") return JSON.stringify(v);
+    if (t === "object" || t === "array") return JSON.stringify(v);
+    return String(v);
+  }
+
+  // ---- Mode switching ----
+  function setMode(m) {
+    mode = m;
+    tabs.forEach((t) => {
+      const on = t.getAttribute("data-mode") === m;
+      t.classList.toggle("active", on);
+      t.setAttribute("aria-selected", String(on));
+    });
+    formatActions.hidden = m !== "format";
+    diffActions.hidden = m !== "diff";
+    schemaActions.hidden = m !== "schema";
+    formatView.hidden = m !== "format";
+    diffView.hidden = m !== "diff";
+    schemaView.hidden = m !== "schema";
+  }
+  tabs.forEach((t) => t.addEventListener("click", () => setMode(t.getAttribute("data-mode"))));
+
+  // ---- Diff ----
+  function structuralDiff(a, b, path) {
+    path = path || "";
+    const out = [];
+    const ta = valType(a), tb = valType(b);
+    const label = path || "(root)";
+    if (ta !== tb) { out.push({ path: label, kind: "changed", a: a, b: b }); return out; }
+    if (ta === "object") {
+      const keys = [...new Set([...Object.keys(a), ...Object.keys(b)])].sort();
+      for (const k of keys) {
+        const p = path ? path + "." + k : k;
+        if (!(k in a)) out.push({ path: p, kind: "added", b: b[k] });
+        else if (!(k in b)) out.push({ path: p, kind: "removed", a: a[k] });
+        else out.push.apply(out, structuralDiff(a[k], b[k], p));
+      }
+    } else if (ta === "array") {
+      const len = Math.max(a.length, b.length);
+      for (let i = 0; i < len; i++) {
+        const p = path + "[" + i + "]";
+        if (i >= a.length) out.push({ path: p, kind: "added", b: b[i] });
+        else if (i >= b.length) out.push({ path: p, kind: "removed", a: a[i] });
+        else out.push.apply(out, structuralDiff(a[i], b[i], p));
+      }
+    } else {
+      if (a !== b) out.push({ path: label, kind: "changed", a: a, b: b });
+    }
+    return out;
+  }
+
+  function lineDiff(aText, bText) {
+    const A = aText.split("\n"), B = bText.split("\n");
+    const n = A.length, m = B.length;
+    if (n * m > 4000000) return null; // guard against pathological inputs
+    const dp = Array.from({ length: n + 1 }, () => new Int32Array(m + 1));
+    for (let i = n - 1; i >= 0; i--)
+      for (let j = m - 1; j >= 0; j--)
+        dp[i][j] = A[i] === B[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+    const res = []; let i = 0, j = 0;
+    while (i < n && j < m) {
+      if (A[i] === B[j]) { res.push({ t: "ctx", text: A[i] }); i++; j++; }
+      else if (dp[i + 1][j] >= dp[i][j + 1]) { res.push({ t: "del", text: A[i] }); i++; }
+      else { res.push({ t: "add", text: B[j] }); j++; }
+    }
+    while (i < n) res.push({ t: "del", text: A[i++] });
+    while (j < m) res.push({ t: "add", text: B[j++] });
+    return res;
+  }
+
+  let lastDiff = null;
+
+  function showDiffError(text) {
+    lastDiff = null;
+    diffResults.innerHTML = "";
+    diffResults.appendChild(makeResHead(text, "err"));
+  }
+
+  function runCompare() {
+    if (!diffA.value.trim() || !diffB.value.trim()) {
+      showDiffError("Both A and B are required.");
+      return;
+    }
+    const pa = autoParse(diffA.value);
+    if (pa.error) { showDiffError("A — " + pa.error); return; }
+    const pb = autoParse(diffB.value);
+    if (pb.error) { showDiffError("B — " + pb.error); return; }
+    lastDiff = {
+      aVal: pa.value, bVal: pb.value,
+      aText: jsonStringify(pa.value), bText: jsonStringify(pb.value)
+    };
+    renderDiffResult();
+  }
+
+  function renderDiffResult() {
+    if (!lastDiff) return;
+    diffResults.innerHTML = "";
+    if (diffView2 === "structural") {
+      const diffs = structuralDiff(lastDiff.aVal, lastDiff.bVal);
+      diffResults.appendChild(makeResHead(
+        diffs.length ? diffs.length + " difference" + (diffs.length === 1 ? "" : "s") : "No differences — A and B are equal",
+        diffs.length ? "diff" : "ok"
+      ));
+      if (!diffs.length) return;
+      const list = el("div", "dlist");
+      for (const d of diffs) {
+        const row = el("div", "drow " + d.kind);
+        const badge = el("span", "badge");
+        badge.textContent = d.kind === "added" ? "+" : d.kind === "removed" ? "−" : "~";
+        row.appendChild(badge);
+        const p = el("span", "dpath"); p.textContent = d.path; row.appendChild(p);
+        const val = el("span", "dval");
+        if (d.kind === "changed") {
+          const o = el("span", "old"); o.textContent = fmtVal(d.a);
+          const ar = el("span", "arrow"); ar.textContent = "→";
+          const nw = el("span", "new"); nw.textContent = fmtVal(d.b);
+          val.append(o, ar, nw);
+        } else if (d.kind === "added") {
+          const nw = el("span", "new"); nw.textContent = fmtVal(d.b); val.appendChild(nw);
+        } else {
+          const o = el("span", "old"); o.textContent = fmtVal(d.a); val.appendChild(o);
+        }
+        row.appendChild(val);
+        list.appendChild(row);
+      }
+      diffResults.appendChild(list);
+    } else {
+      const rows = lineDiff(lastDiff.aText, lastDiff.bText);
+      if (rows === null) {
+        diffResults.appendChild(makeResHead("Inputs too large for line diff — use Structural.", "err"));
+        return;
+      }
+      let adds = 0, dels = 0;
+      for (const r of rows) { if (r.t === "add") adds++; else if (r.t === "del") dels++; }
+      const same = adds === 0 && dels === 0;
+      diffResults.appendChild(makeResHead(
+        same ? "Identical (after formatting)" : "+" + adds + " −" + dels + " line" + (adds + dels === 1 ? "" : "s"),
+        same ? "ok" : "diff"
+      ));
+      const box = el("div", "ubox");
+      for (const r of rows) {
+        const line = el("div", "uline " + (r.t === "add" ? "add" : r.t === "del" ? "del" : ""));
+        const s = el("span", "sign");
+        s.textContent = r.t === "add" ? "+" : r.t === "del" ? "−" : " ";
+        const c = el("span", "ltext"); c.textContent = r.text;
+        line.append(s, c);
+        box.appendChild(line);
+      }
+      diffResults.appendChild(box);
+    }
+  }
+
+  function setDiffView(v) {
+    diffView2 = v;
+    structDiffBtn.classList.toggle("active", v === "structural");
+    lineDiffBtn.classList.toggle("active", v === "line");
+    structDiffBtn.setAttribute("aria-selected", String(v === "structural"));
+    lineDiffBtn.setAttribute("aria-selected", String(v === "line"));
+    if (lastDiff) renderDiffResult();
+  }
+
+  compareBtn.addEventListener("click", runCompare);
+  structDiffBtn.addEventListener("click", () => setDiffView("structural"));
+  lineDiffBtn.addEventListener("click", () => setDiffView("line"));
+  swapBtn.addEventListener("click", () => {
+    const t = diffA.value; diffA.value = diffB.value; diffB.value = t;
+    if (lastDiff) runCompare();
+  });
+  diffClearBtn.addEventListener("click", () => {
+    diffA.value = ""; diffB.value = ""; lastDiff = null;
+    diffResults.innerHTML = "";
+    diffResults.appendChild(placeholder("Paste two payloads and click Compare."));
+  });
+
+  // ---- Schema validation ----
+  function showSchemaMsg(text, kind) {
+    schemaResults.innerHTML = "";
+    schemaResults.appendChild(makeResHead(text, kind));
+  }
+
+  function runSchemaValidate() {
+    if (!schemaData.value.trim() || !schemaDoc.value.trim()) {
+      showSchemaMsg("Both data and schema are required.", "err");
+      return;
+    }
+    const pd = autoParse(schemaData.value);
+    if (pd.error) { showSchemaMsg("Data — " + pd.error, "err"); return; }
+    const ps = autoParse(schemaDoc.value);
+    if (ps.error) { showSchemaMsg("Schema — " + ps.error, "err"); return; }
+    if (typeof Ajv === "undefined") {
+      showSchemaMsg("Schema validator (Ajv) failed to load — check your connection.", "err");
+      return;
+    }
+    let ajv, validate;
+    try { ajv = new Ajv({ allErrors: true }); }
+    catch (e) { showSchemaMsg("Validator init failed: " + e.message, "err"); return; }
+    try { validate = ajv.compile(ps.value); }
+    catch (e) { showSchemaMsg("Invalid schema — " + e.message, "err"); return; }
+
+    const ok = validate(pd.value);
+    schemaResults.innerHTML = "";
+    if (ok) {
+      schemaResults.appendChild(makeResHead("✓ Valid — data conforms to the schema", "ok"));
+      return;
+    }
+    const errs = validate.errors || [];
+    schemaResults.appendChild(makeResHead("✗ Invalid — " + errs.length + " error" + (errs.length === 1 ? "" : "s"), "err"));
+    const list = el("div", "slist");
+    for (const e of errs) {
+      const row = el("div", "serr");
+      const p = el("span", "spath");
+      p.textContent = (e.dataPath || e.instancePath || "") || "(root)";
+      row.appendChild(p);
+      const m = el("span", "smsg");
+      let msg = e.message || "invalid";
+      if (e.params && e.params.allowedValues) msg += " (" + e.params.allowedValues.join(", ") + ")";
+      if (e.params && e.params.additionalProperty) msg += ": " + e.params.additionalProperty;
+      m.textContent = msg;
+      row.appendChild(m);
+      list.appendChild(row);
+    }
+    schemaResults.appendChild(list);
+  }
+
+  function loadSchemaSample() {
+    schemaData.value = JSON.stringify({
+      name: "widget",
+      price: 9.99,
+      inStock: true,
+      tags: ["new", "featured"]
+    }, null, 2);
+    schemaDoc.value = JSON.stringify({
+      $schema: "http://json-schema.org/draft-07/schema#",
+      type: "object",
+      required: ["name", "price"],
+      properties: {
+        name: { type: "string", minLength: 1 },
+        price: { type: "number", minimum: 0 },
+        inStock: { type: "boolean" },
+        tags: { type: "array", items: { type: "string" } }
+      },
+      additionalProperties: false
+    }, null, 2);
+  }
+
+  schemaValidateBtn.addEventListener("click", runSchemaValidate);
+  schemaSampleBtn.addEventListener("click", loadSchemaSample);
+  schemaClearBtn.addEventListener("click", () => {
+    schemaData.value = ""; schemaDoc.value = "";
+    schemaResults.innerHTML = "";
+    schemaResults.appendChild(placeholder("Paste data and a schema, then click Validate against schema."));
   });
 
   // ---- Theme toggle ----
